@@ -1,0 +1,181 @@
+#cloud-config
+debug: true
+autoinstall:
+  apt:
+    disable_components: []
+    geoip: true
+    preserve_sources_list: false
+    primary:
+      - arches:
+        - default
+        uri: http://de.archive.ubuntu.com/ubuntu
+
+  drivers:
+    install: false
+  kernel:
+    package: linux-generic
+  keyboard:
+    layout: us
+    toggle: null
+    variant: ''
+  locale: en_US.UTF-8
+  network:
+    version: 2
+    ethernets:
+      default:
+        match:
+          name: "*"
+        optional: true
+        dhcp4: true
+
+  source:
+    id: ubuntu-server
+    search_drivers: true
+
+  ssh:
+    allow-pw: true
+    authorized-keys: []
+    install-server: true
+
+  user-data:
+    hostname: ubunch-os-dev
+    users:
+      - name: ubunch
+        shell: /bin/bash
+        passwd: $6$7dh703M1XS919dqp$piYBiOJbDNINu.xwdDYMMLhQ063Lc57CnCX6fDydVDWnlMKKkLgsWiq6oT4wOFao8alxuE5BSmFZ/125JZ5kN0
+        groups: [sudo, systemd-journal, adm]
+        lock_passwd: false
+    
+  storage:
+    swap:
+      size: 0
+    config:
+      - id: disk0
+        type: disk
+        ptable: gpt
+        match:
+          size: largest
+        wipe: superblock
+      
+      # EFI System Partition for UEFI
+      - id: disk0-part1
+        type: partition
+        number: 1
+        size: 512MB
+        device: disk0
+        flag: boot
+        grub_device: true
+      
+      # Separate /boot partition
+      - id: disk0-part2
+        type: partition
+        number: 2
+        size: 2GB
+        device: disk0
+      
+      # Root partition (encrypted)
+      - id: disk0-part3
+        type: partition
+        number: 3
+        size: -1
+        device: disk0
+      
+      # FORMAT - EFI as fat32
+      - id: disk0-part1-format
+        type: format
+        fstype: fat32
+        volume: disk0-part1
+        label: EFI
+      
+      # Format /boot
+      - id: disk0-part2-format
+        type: format
+        fstype: ext4
+        volume: disk0-part2
+        label: boot
+      
+      # Encryption layers
+      - id: root-crypt
+        type: dm_crypt
+        dm_name: root-crypt
+        volume: disk0-part3
+        key: "ubunchpass"
+      
+      # Format encrypted partitions 
+      - id: root-fs
+        type: format
+        fstype: ext4
+        volume: root-crypt
+        label: root
+      
+      # MOUNT POINTS
+      - id: disk0-part1-mount
+        type: mount
+        path: /boot/efi
+        device: disk0-part1-format
+      
+      - id: disk0-part2-mount
+        type: mount
+        path: /boot
+        device: disk0-part2-format
+      
+      - id: root-mount
+        type: mount
+        path: /
+        device: root-fs
+      
+  late-commands:
+    # Install custom local repo 
+    - cp -r /cdrom/srv/ubunch-linux-repo /target/srv/
+    - curtin in-target -- sh -c 'echo "deb [arch=amd64 trusted=yes] file:///srv/ubunch-linux-repo noble main" > /etc/apt/sources.list.d/ubunch-linux-repo.list'
+    
+    # Update system packages
+    - curtin in-target -- apt-get update
+   
+    # Install custom bundles 
+    - |
+      curtin in-target -- bash -ec '
+      while IFS= read -r line; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        
+        apt install -y "$line"
+        
+      done < /cdrom/apt_list.txt
+      '
+
+    # Configure cryptsetup
+    - curtin in-target -- bash -ec 'echo "CRYPTSETUP=y" >> /etc/cryptsetup-initramfs/conf-hook'
+
+    # Enable auto decrypt using clevis
+    - curtin in-target -- systemctl enable clevis-luks-askpass.path
+
+    # Dynamic detection and temp_keyfile bind
+    - mkdir -p "/target/etc/luks"
+    - chmod 700 "/target/etc/luks"
+    - cp "/cdrom/ubunch-data/temp_keyfile" "/target/etc/luks/keyfile"
+    - chmod 600 "/target/etc/luks/keyfile"
+
+    - |
+      curtin in-target -- bash -ec '
+        set -euo pipefail
+
+        KEYFILE="/etc/luks/keyfile"
+
+        for LUKS_DEV in $(blkid -t TYPE=crypto_LUKS -o device); do
+          echo "ubunchpass" | cryptsetup luksAddKey "$LUKS_DEV" "$KEYFILE"
+        done
+
+        cp /etc/crypttab /etc/crypttab.bak
+        awk -v kf="$KEYFILE" '\''{ 
+          if ($1 !~ /^#/ && $1 != "") { 
+            $3 = kf; 
+          } 
+          print 
+        }'\'' /etc/crypttab.bak > /etc/crypttab
+
+        echo "KEYFILE_PATTERN=$KEYFILE" >> /etc/cryptsetup-initramfs/conf-hook
+        chmod 600 /etc/cryptsetup-initramfs/conf-hook
+        update-initramfs -u -k all
+      '
+
+  version: 1
