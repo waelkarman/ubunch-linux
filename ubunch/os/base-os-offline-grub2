@@ -3,13 +3,9 @@ debug: true
 autoinstall:
   apt:
     disable_components: []
-    geoip: true
-    preserve_sources_list: false
-    primary:
-      - arches:
-        - default
-        uri: http://de.archive.ubuntu.com/ubuntu
-
+    geoip: false
+    fallback: offline-install
+    preserve_sources_list: false      
   drivers:
     install: false
   kernel:
@@ -135,14 +131,22 @@ autoinstall:
     # Install custom bundles 
     - |
       curtin in-target -- bash -ec '
+      EXCLUDE=(systemd-boot systemd-boot-efi systemd)
+
       while IFS= read -r line; do
         [[ -z "$line" || "$line" == \#* ]] && continue
-        
-        apt install -y "$line"
-        
-      done < /cdrom/apt_list.txt
-      '
 
+        skip=false
+        for ex in "${EXCLUDE[@]}"; do
+          [[ "$line" == "$ex" ]] && skip=true && break
+        done
+        $skip && continue
+
+        apt install -y "$line"
+
+      done < /cdrom/srv/ubunch-linux-repo/apt_list.txt
+      '
+      
     # Configure cryptsetup
     - curtin in-target -- bash -ec 'echo "CRYPTSETUP=y" >> /etc/cryptsetup-initramfs/conf-hook'
 

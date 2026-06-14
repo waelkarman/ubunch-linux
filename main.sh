@@ -28,10 +28,9 @@ mkdir -p "$REPO_BUILD_DIR/dists/$RELEASE/main/binary-$ARCH"
 # ---------------------------------------------------------------------------
 rebuild_indexes() {
     echo "[+] (Re)building repo indexes..."
-    dpkg-scanpackages --arch "$ARCH" pool/main /dev/null \
-        | gzip -9c > "dists/$RELEASE/main/binary-$ARCH/Packages.gz"
-    dpkg-scanpackages --arch "$ARCH" pool/main /dev/null \
-        > "dists/$RELEASE/main/binary-$ARCH/Packages"
+    dpkg-scanpackages --arch "$ARCH" pool/main /dev/null 2>/dev/null \
+    | tee "dists/$RELEASE/main/binary-$ARCH/Packages" \
+    | gzip -9c > "dists/$RELEASE/main/binary-$ARCH/Packages.gz"
 
     pushd "dists/$RELEASE" > /dev/null
     cat > /tmp/apt-release.conf <<EOF
@@ -78,6 +77,9 @@ for bundle_name in "${IMAGE_INSTALL[@]}"; do
             echo "    Pre-built .deb found, skipping build."
         fi
         popd > /dev/null
+    else 
+        echo "fatal error: $bundle_dir does not exist"
+        exit 1
     fi
 
     if compgen -G "$bundle_dir/${bundle_name}*.deb" > /dev/null; then
@@ -96,13 +98,6 @@ popd > /dev/null
 # ---------------------------------------------------------------------------
 # 4. Build apt_list.txt (custom debs + standard packages)
 # ---------------------------------------------------------------------------
-PACKAGES=(
-    vim nano curl wget tree tmux htop locate
-    inotify-tools
-    clevis clevis-tpm2 clevis-luks clevis-initramfs clevis-systemd
-    tpm2-tools libsensors-dev lm-sensors
-)
-
 > "$REPO_BUILD_DIR/apt_list.txt"
 
 for deb in "$POOL_DIR"/*.deb; do
@@ -111,7 +106,15 @@ for deb in "$POOL_DIR"/*.deb; do
     echo "${package_name%%_*}" >> "$REPO_BUILD_DIR/apt_list.txt"
 done
 
-printf '%s\n' "${PACKAGES[@]}" >> "$REPO_BUILD_DIR/apt_list.txt"
+for pkg in "${PACKAGES[@]}"; do
+    if apt-cache show "$pkg" &>/dev/null; then
+        echo "$pkg" >> "$REPO_BUILD_DIR/apt_list.txt"
+    else
+        echo "FATAL ERROR: package '$pkg' not found in any available repo"
+        exit 1
+    fi
+done
+
 awk '!seen[$0]++' "$REPO_BUILD_DIR/apt_list.txt" > /tmp/apt_list_dedup.txt \
     && mv /tmp/apt_list_dedup.txt "$REPO_BUILD_DIR/apt_list.txt"
 

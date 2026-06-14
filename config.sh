@@ -18,5 +18,13 @@ RUN_IN_QEMU=true
 
 # List of bundle names to install into the image (space-separated or as array)
 IMAGE_INSTALL=(
-    bash-utilities
+    bash-lib
+)
+
+PACKAGES=(
+    vim nano curl wget tree tmux htop locate
+    inotify-tools
+    clevis clevis-tpm2 clevis-luks clevis-initramfs clevis-systemd
+    tpm2-tools libsensors-dev lm-sensors
+    systemd-boot systemd-boot-efi systemd
 )

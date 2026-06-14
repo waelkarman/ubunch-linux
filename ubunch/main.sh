@@ -3,8 +3,6 @@ set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Source configuration
-# Questo script viene chiamato da: <root>/main.sh con sudo -E ./main.sh
-# La cwd e' <root>/ubunch/ e SCRIPT_DIR/REPO_BUILD_DIR sono gia' exportati
 # ---------------------------------------------------------------------------
 UBUNCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$UBUNCH_DIR/../config.sh"
@@ -23,14 +21,18 @@ GRUB_DIR="$EXTRACT_TMP_DIR/boot/grub"
 THEME_DIR="$GRUB_DIR/themes/grub2-theme"
 REPO_DEST="$EXTRACT_TMP_DIR/srv"
 ISO_OUTPUT="$UBUNCH_DIR/${ISO_OUT}.iso"
-OVMF_FILE="$UBUNCH_DIR/OVMF/OVMF_CODE_4M.fd"
+OVMF_DIR="$UBUNCH_DIR/OVMF"
+OVMF_CODE="$OVMF_DIR/OVMF_CODE_4M.fd"
+OVMF_VARS_ORIG="$OVMF_DIR/OVMF_VARS_4M.fd"
+OVMF_VARS_RUN="$UBUNCH_DIR/OVMF_VARS_runtime.fd"
 ISO_FILE="$UBUNCH_DIR/$ORIGINAL_IMAGE"
 
 # ---------------------------------------------------------------------------
 # Cleanup iniziale artifacts precedenti (non l'ISO sorgente)
 # ---------------------------------------------------------------------------
 echo "[+] Cleaning previous build artifacts..."
-rm -rf "$EFI_IMG" "$EFI_TEMP" "$TPM_STATE" "$EXTRACT_TMP_DIR"
+rm -rf "$EFI_TEMP" "$EFI_IMG" "$TPM_STATE" "$EXTRACT_TMP_DIR"
+rm -f  "$DISK_IMG" "$OVMF_VARS_RUN" "$ISO_OUT.iso"
 
 # ---------------------------------------------------------------------------
 # Trap: cleanup su EXIT — registrato subito, gestisce anche swtpm
@@ -56,7 +58,7 @@ cleanup() {
     fi
 
     rm -rf "$EFI_TEMP" "$EFI_IMG" "$TPM_STATE" "$EXTRACT_TMP_DIR"
-    rm -f  "$DISK_IMG"
+    rm -f  "$DISK_IMG" "$OVMF_VARS_RUN" "$ISO_OUT.iso"
 }
 trap cleanup EXIT
 
@@ -87,7 +89,6 @@ echo "[+] Copying local repo into ISO..."
 rm -rf "$REPO_DEST"
 mkdir -p "$REPO_DEST"
 cp -a "$REPO_BUILD_DIR" "$REPO_DEST/"
-cp "$REPO_BUILD_DIR/apt_list.txt" "$EXTRACT_TMP_DIR/"
 
 # ---------------------------------------------------------------------------
 # 4. GRUB theme
@@ -144,7 +145,7 @@ set theme=(cd0)/boot/grub/themes/grub2-theme/theme.txt
 set default=0
 set timeout=-1
 
-menuentry "Install Ubunch Linux [offline] - ($RELEASE)" {
+menuentry "Install Ubunch Linux + GRUB2 [offline] - ($RELEASE)" {
     clear
     echo ""
     echo "========================================================================="
@@ -156,11 +157,11 @@ menuentry "Install Ubunch Linux [offline] - ($RELEASE)" {
     sleep 5
     set gfxpayload=keep
     set root=(cd0)
-    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/base-os-offline/
+    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/base-os-offline-grub2/
     initrd /casper/initrd
 }
 
-menuentry "Install Ubunch Linux [online] - ($RELEASE)" {
+menuentry "Install Ubunch Linux + GRUB2 [online] - ($RELEASE)" {
     clear
     echo ""
     echo "========================================================================="
@@ -172,7 +173,39 @@ menuentry "Install Ubunch Linux [online] - ($RELEASE)" {
     sleep 5
     set gfxpayload=keep
     set root=(cd0)
-    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/base-os-online/
+    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/base-os-online-grub2/
+    initrd /casper/initrd
+}
+
+menuentry "Install Ubunch Linux + systemd-boot [offline] - ($RELEASE)" {
+    clear
+    echo ""
+    echo "========================================================================="
+    echo "        Ubunch Linux OS - Offline Automated Installation                 "
+    echo "========================================================================="
+    echo ""
+    echo "  - Wait until the machine powers off completely"
+    echo ""
+    sleep 5
+    set gfxpayload=keep
+    set root=(cd0)
+    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/base-os-offline-systemd-boot/
+    initrd /casper/initrd
+}
+
+menuentry "Install Ubunch Linux + systemd-boot [online] - ($RELEASE)" {
+    clear
+    echo ""
+    echo "========================================================================="
+    echo "        Ubunch Linux OS - Offline Automated Installation                 "
+    echo "========================================================================="
+    echo ""
+    echo "  - Wait until the machine powers off completely"
+    echo ""
+    sleep 5
+    set gfxpayload=keep
+    set root=(cd0)
+    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/base-os-online-systemd-boot/
     initrd /casper/initrd
 }
 
@@ -213,13 +246,21 @@ mkdir -p "$EXTRACT_TMP_DIR/ubunch-data"
 dd if=/dev/urandom of="$EXTRACT_TMP_DIR/ubunch-data/temp_keyfile" bs=512 count=1
 chmod 600 "$EXTRACT_TMP_DIR/ubunch-data/temp_keyfile"
 
-mkdir -p "$EXTRACT_TMP_DIR/base-os-offline"
-touch    "$EXTRACT_TMP_DIR/base-os-offline/meta-data"
-cp "$UBUNCH_DIR/os/base-os-offline" "$EXTRACT_TMP_DIR/base-os-offline/user-data"
+mkdir -p "$EXTRACT_TMP_DIR/base-os-offline-grub2"
+touch    "$EXTRACT_TMP_DIR/base-os-offline-grub2/meta-data"
+cp "$UBUNCH_DIR/os/base-os-offline-grub2" "$EXTRACT_TMP_DIR/base-os-offline-grub2/user-data"
 
-mkdir -p "$EXTRACT_TMP_DIR/base-os-online"
-touch    "$EXTRACT_TMP_DIR/base-os-online/meta-data"
-cp "$UBUNCH_DIR/os/base-os-online" "$EXTRACT_TMP_DIR/base-os-online/user-data"
+mkdir -p "$EXTRACT_TMP_DIR/base-os-online-grub2"
+touch    "$EXTRACT_TMP_DIR/base-os-online-grub2/meta-data"
+cp "$UBUNCH_DIR/os/base-os-online-grub2" "$EXTRACT_TMP_DIR/base-os-online-grub2/user-data"
+
+mkdir -p "$EXTRACT_TMP_DIR/base-os-offline-systemd-boot"
+touch    "$EXTRACT_TMP_DIR/base-os-offline-systemd-boot/meta-data"
+cp "$UBUNCH_DIR/os/base-os-offline-systemd-boot" "$EXTRACT_TMP_DIR/base-os-offline-systemd-boot/user-data"
+
+mkdir -p "$EXTRACT_TMP_DIR/base-os-online-systemd-boot"
+touch    "$EXTRACT_TMP_DIR/base-os-online-systemd-boot/meta-data"
+cp "$UBUNCH_DIR/os/base-os-online-systemd-boot" "$EXTRACT_TMP_DIR/base-os-online-systemd-boot/user-data"
 
 # ---------------------------------------------------------------------------
 # 8. Partizione EFI (efi.img, 200MB)
@@ -238,7 +279,6 @@ dd if=/dev/zero of="$EFI_IMG" bs=1M count=200
 mkfs.vfat -n "EFI_PART" "$EFI_IMG"
 mcopy -i "$EFI_IMG" -s "$EFI_TEMP"/* ::
 
-# Inserisci efi.img nell'albero ISO — xorriso lo usa con "-e efi.img"
 cp "$EFI_IMG" "$EXTRACT_TMP_DIR/"
 
 # ---------------------------------------------------------------------------
@@ -262,17 +302,74 @@ echo "[+] ISO ready: $ISO_OUTPUT"
 
 # ---------------------------------------------------------------------------
 # 10. Boot in QEMU con UEFI + TPM2 (opzionale)
+#
+#     Modalita' rilevata automaticamente in base all'esistenza del disco:
+#
+#     DISK_IMG non esiste → prima installazione:
+#       - crea disco virtuale
+#       - monta ISO come cdrom
+#       - OVMF_VARS_RUN creata fresca
+#       - boota dall'ISO per avviare l'installer
+#
+#     DISK_IMG esiste → boot post-install:
+#       - non ricrea il disco
+#       - niente cdrom
+#       - OVMF_VARS_RUN riutilizzata (contiene entry EFI scritte da bootctl)
+#       - boota direttamente dal disco installato
+#
+#     OVMF_VARS_RUN non viene mai cancellata dal trap cleanup() ne' dalla
+#     pulizia iniziale — vive quanto DISK_IMG. Per reinstallare da zero,
+#     cancellare entrambi manualmente.
+#
 # ---------------------------------------------------------------------------
 if [[ "$RUN_IN_QEMU" == true ]]; then
 
-    if [[ ! -f "$OVMF_FILE" ]]; then
-        echo "ERROR: OVMF firmware not found at $OVMF_FILE"
+    if [[ ! -f "$OVMF_CODE" ]]; then
+        echo "ERROR: OVMF firmware not found at $OVMF_CODE"
         exit 1
     fi
 
-    echo "[+] Creating virtual disk (500G)..."
-    qemu-img create -f qcow2 -o preallocation=metadata "$DISK_IMG" 500G
+    if [[ ! -f "$OVMF_VARS_ORIG" ]]; then
+        echo "ERROR: OVMF_VARS_4M.fd non trovato in $OVMF_DIR"
+        echo "       Esegui: cp /usr/share/OVMF/OVMF_VARS_4M.fd $OVMF_DIR/"
+        exit 1
+    fi
 
+    # ------------------------------------------------------------------
+    # OVMF VARS — crea fresca solo al primo run
+    # ------------------------------------------------------------------
+    if [[ ! -f "$OVMF_VARS_RUN" ]]; then
+        echo "[+] Fresh VARS copy (first run)..."
+        cp "$OVMF_VARS_ORIG" "$OVMF_VARS_RUN"
+    else
+        echo "[+] Reusing existing VARS (post-install boot)..."
+    fi
+
+    OVMF_PFLASH_ARGS=(
+        -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
+        -drive "if=pflash,format=raw,file=${OVMF_VARS_RUN}"
+    )
+
+    # ------------------------------------------------------------------
+    # Rileva modalita': install o boot
+    # ------------------------------------------------------------------
+    QEMU_EXTRA_ARGS=()
+
+    if [[ ! -f "$DISK_IMG" ]]; then
+        echo "[+] Disk not found — install mode (ISO + fresh disk)..."
+        qemu-img create -f qcow2 -o preallocation=metadata "$DISK_IMG" 500G
+        QEMU_EXTRA_ARGS=(
+            -boot once=d
+            -cdrom "$ISO_OUTPUT"
+        )
+    else
+        echo "[+] Disk found — boot mode (no ISO, boot from disk)..."
+        # Niente cdrom, niente -boot → UEFI boota dalla NVRAM
+    fi
+
+    # ------------------------------------------------------------------
+    # TPM2
+    # ------------------------------------------------------------------
     echo "[+] Starting TPM2 emulator..."
     mkdir -p "$TPM_STATE"
 
@@ -285,20 +382,21 @@ if [[ "$RUN_IN_QEMU" == true ]]; then
         --flags startup-clear \
         --daemon
 
-    # Attendi che swtpm scriva il PID (qualche ms dopo --daemon)
     sleep 1
     SWTPM_PID="$(cat "$TPM_STATE/swtpm.pid")"
     echo "    swtpm started with PID $SWTPM_PID"
 
-    echo "[+] Booting ISO in QEMU (UEFI + TPM2)..."
+    # ------------------------------------------------------------------
+    # QEMU
+    # ------------------------------------------------------------------
+    echo "[+] Booting QEMU (UEFI + TPM2)..."
     qemu-system-x86_64 \
         -m 4096 \
         -enable-kvm \
         -cpu host,-svm \
-        -boot once=d \
-        -cdrom "$ISO_OUTPUT" \
-        -drive file="$DISK_IMG",format=qcow2,if=virtio,cache=none,aio=threads,discard=unmap \
-        -drive if=pflash,format=raw,readonly=on,file="$OVMF_FILE" \
+        -drive "file=${DISK_IMG},format=qcow2,if=virtio,cache=none,aio=threads,discard=unmap" \
+        "${OVMF_PFLASH_ARGS[@]}" \
+        "${QEMU_EXTRA_ARGS[@]+"${QEMU_EXTRA_ARGS[@]}"}" \
         -netdev user,id=n1 \
         -device e1000,netdev=n1 \
         -chardev socket,id=chrtpm,path="$TPM_STATE/swtpm-sock" \
