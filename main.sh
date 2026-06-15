@@ -105,7 +105,7 @@ for deb in "$POOL_DIR"/*.deb; do
 done
 
 for pkg in "${PACKAGES[@]}"; do
-    if apt-cache show "$pkg" &>/dev/null; then
+    if apt-cache "${APT_OPTS[@]}" show "$pkg" &>/dev/null; then
         echo "$pkg" >> "$REPO_BUILD_DIR/apt_list.txt"
     else
         echo "FATAL ERROR: package '$pkg' not found in any available repo"
