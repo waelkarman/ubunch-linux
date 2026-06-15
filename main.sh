@@ -78,7 +78,7 @@ for bundle_name in "${IMAGE_INSTALL[@]}"; do
         fi
         popd > /dev/null
     else 
-        echo "fatal error: $bundle_dir does not exist"
+        echo "fatal error: $bundle_dir build script does not exist"
         exit 1
     fi
 
