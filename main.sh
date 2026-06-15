@@ -77,16 +77,14 @@ for bundle_name in "${IMAGE_INSTALL[@]}"; do
             echo "    Pre-built .deb found, skipping build."
         fi
         popd > /dev/null
-    else 
-        echo "fatal error: $bundle_dir build script does not exist"
-        exit 1
     fi
 
     if compgen -G "$bundle_dir/${bundle_name}*.deb" > /dev/null; then
         echo "[+] Copying ${bundle_name}*.deb to pool..."
         cp "$bundle_dir/${bundle_name}"*.deb "$POOL_DIR/"
     else
-        echo "WARNING: No .deb found for bundle '$bundle_name', skipping."
+        echo "fatal error: No .deb found for bundle '$bundle_name'."
+        exit 1
     fi
 done
 
